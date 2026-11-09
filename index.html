@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Basis Tracker</title>
+<meta name="description" content="Track annualised futures basis and OI signals for NSE stock futures">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Basis">
+<meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2;
+  --surface: #fcfcfb;
+  --border: #e3e2de;
+  --grid: #ecebe7;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --text-3: #7a7974;
+  --accent: #2a78d6;
+  --band: rgba(42,120,214,0.10);
+  --good: #0f7b3f; --good-bg: #e6f4ec;
+  --warn: #9a6200; --warn-bg: #fdf3dc;
+  --bad: #b42525;  --bad-bg: #fbe9e9;
+  --neutral-bg: #efeeea;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #111110;
+    --surface: #1a1a19;
+    --border: #2e2e2c;
+    --grid: #262624;
+    --text: #f0efec;
+    --text-2: #c3c2b7;
+    --text-3: #8f8e86;
+    --accent: #3987e5;
+    --band: rgba(57,135,229,0.16);
+    --good: #5cc98a; --good-bg: #16301f;
+    --warn: #e7b04a; --warn-bg: #33280f;
+    --bad: #ef7d7d;  --bad-bg: #3a1a1a;
+    --neutral-bg: #262624;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%; }
+body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); flex: 1 1 140px; }
+input, select { font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; width: 100%; min-height: 44px; }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { font: inherit; font-size: 15px; font-weight: 600; border-radius: 10px; padding: 10px 16px; min-height: 44px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.small { min-height: 34px; padding: 4px 10px; font-size: 13px; font-weight: 500; }
+button:active { transform: translateY(1px); }
+.preview { margin-top: 12px; font-size: 14px; color: var(--text-2); min-height: 20px; }
+.preview b { color: var(--text); }
+.symbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { border-radius: 999px; padding: 6px 14px; min-height: 36px; font-weight: 500; }
+.chip.on { background: var(--text); color: var(--surface); border-color: var(--text); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.stat { background: var(--bg); border-radius: 12px; padding: 12px 14px; }
+.stat .k { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat .v { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat .s { font-size: 13px; color: var(--text-2); }
+.tag { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; padding: 3px 9px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.tag.good { background: var(--good-bg); color: var(--good); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+.tag.bad  { background: var(--bad-bg);  color: var(--bad); }
+.tag.neutral { background: var(--neutral-bg); color: var(--text-2); }
+.reading { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--bg); font-size: 15px; }
+.reading p { margin: 4px 0; }
+.chart-wrap { position: relative; }
+svg.chart { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.axis text { fill: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  white-space: nowrap; display: none; z-index: 2; }
+.tip b { font-variant-numeric: tabular-nums; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-2); margin-top: 6px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 2px; background: var(--accent); vertical-align: middle; margin-right: 6px; }
+.legend span.band::before { height: 10px; background: var(--band); border: 1px dashed var(--accent); }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { font-size: 12px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+th:first-child, td:first-child { text-align: left; }
+td.l { text-align: left; }
+.empty { color: var(--text-3); text-align: center; padding: 28px 8px; }
+details { font-size: 15px; }
+details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+details p, details li { color: var(--text-2); }
+.muted { color: var(--text-3); font-size: 13px; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; z-index: 10; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Basis Tracker</h1>
+    <div class="row">
+      <button class="small" id="exportBtn">Export CSV</button>
+      <button class="small" id="importBtn">Import CSV</button>
+      <input type="file" id="importFile" accept=".csv,text/csv" hidden>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>Add today's entry</h2>
+    <form id="entryForm" autocomplete="off">
+      <div class="row">
+        <label>Symbol <input id="fSym" list="symList" required placeholder="BHEL" style="text-transform:uppercase"></label>
+        <label>Date <input id="fDate" type="date" required></label>
+        <label>Futures expiry <input id="fExp" type="date" required></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label>Spot close (₹) <input id="fSpot" type="number" step="0.05" min="0" inputmode="decimal" required placeholder="422.95"></label>
+        <label>Futures close (₹) <input id="fFut" type="number" step="0.05" min="0" inputmode="decimal" required placeholder="428.00"></label>
+        <label>Open interest <input id="fOI" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
+      </div>
+      <datalist id="symList"></datalist>
+      <div class="preview" id="preview"></div>
+      <div class="row" style="margin-top:12px">
+        <button type="submit" class="primary">Save entry</button>
+        <span class="muted">Use CLOSE prices for both. Track the contract with 20+ days left.</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" id="summaryCard">
+    <div class="row" style="justify-content:space-between; margin-bottom:12px">
+      <h2 style="margin:0">Summary</h2>
+      <div class="symbar" id="symbar"></div>
+    </div>
+    <div id="summary"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="chartTitle">Annualised basis</h2>
+    <div class="chart-wrap" id="chartWrap">
+      <div class="tip" id="tip"></div>
+      <div id="chart"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="card">
+    <h2>Log</h2>
+    <div class="table-scroll"><table id="log"></table></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>How to read this</summary>
+      <p><b>Annualised basis</b> = (Futures − Spot) ÷ Spot × 365 ÷ days to expiry. It turns the futures premium into a yearly interest rate so every day is comparable.</p>
+      <p><b>Normal band</b> = average ± 1.5 standard deviations of the last 20 entries for that stock (needs 10+ entries). Readings outside it are what matter.</p>
+      <ul>
+        <li><b>Above band</b>: futures buyers paying extra — leveraged longs crowding in. Bullish but fragile.</li>
+        <li><b>Below band / negative</b>: futures sellers pushing price down — heavy shorts. First check for an upcoming ex-dividend date, which legitimately creates a discount.</li>
+      </ul>
+      <p><b>Price + OI (same contract only):</b></p>
+      <ul>
+        <li>Price ↑ OI ↑ — Long buildup</li>
+        <li>Price ↓ OI ↑ — Short buildup</li>
+        <li>Price ↑ OI ↓ — Short covering</li>
+        <li>Price ↓ OI ↓ — Long unwinding</li>
+      </ul>
+      <p>When you switch to a new expiry, OI change is not comparable for that day and is shown as "Rollover".</p>
+      <p class="muted">Data is stored only on this device. Export CSV regularly as a backup.</p>
+    </details>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "basisTracker.v1";
+  var BAND_N = 20, BAND_MIN = 10, MIN_DAYS = 20, BAND_K = 1.5;
+
+  // ---------- storage ----------
+  function load() {
+    try { var raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : { entries: [], selected: null }; }
+    catch (e) { return { entries: [], selected: null }; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    catch (e) { toast("Could not save — export a CSV backup"); }
+  }
+  var state = load();
+  if (!Array.isArray(state.entries)) state.entries = [];
+
+  // ---------- helpers ----------
+  var $ = function (id) { return document.getElementById(id); };
+  function dayNum(iso) { var p = iso.split("-"); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000; }
+  function todayISO() { var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
+  function fmt(n, d) { return (n == null || isNaN(n)) ? "–" : n.toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function pct(n, d) { return (n == null || isNaN(n)) ? "–" : (n * 100).toFixed(d == null ? 1 : d) + "%"; }
+  function shortDate(iso) { var p = iso.split("-"); var m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+p[1] - 1]; return (+p[2]) + " " + m; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function toast(msg) { var t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast._t); toast._t = setTimeout(function () { t.style.display = "none"; }, 2400); }
+
+  function calc(spot, fut, date, exp) {
+    var days = dayNum(exp) - dayNum(date);
+    var basis = fut - spot;
+    var bp = basis / spot;
+    var ann = days > 0 ? bp * 365 / days : NaN;
+    return { days: days, basis: basis, bp: bp, ann: ann };
+  }
+
+  // Derived rows for one symbol, oldest first
+  function rowsFor(sym) {
+    var list = state.entries.filter(function (e) { return e.sym === sym; })
+      .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    var out = [];
+    list.forEach(function (e, i) {
+      var c = calc(e.spot, e.fut, e.date, e.exp);
+      var r = { e: e, days: c.days, basis: c.basis, bp: c.bp, ann: c.ann };
+      var prev = i > 0 ? list[i - 1] : null;
+      r.priceChg = prev ? e.fut - prev.fut : null;
+      r.rollover = prev ? prev.exp !== e.exp : false;
+      r.oiChg = (prev && !r.rollover && e.oi != null && prev.oi != null) ? e.oi - prev.oi : null;
+      r.signal = oiSignal(r);
+      // band from previous entries (excluding today)
+      var past = out.slice(Math.max(0, out.length - BAND_N)).map(function (x) { return x.ann; }).filter(function (v) { return isFinite(v); });
+      if (past.length >= BAND_MIN) {
+        var mean = past.reduce(function (a, b) { return a + b; }, 0) / past.length;
+        var sd = Math.sqrt(past.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / (past.length - 1));
+        r.band = { mean: mean, lo: mean - BAND_K * sd, hi: mean + BAND_K * sd, n: past.length };
+        r.pos = r.ann > r.band.hi ? "above" : r.ann < r.band.lo ? "below" : "inside";
+      } else { r.band = null; r.pos = null; }
+      out.push(r);
+    });
+    return out;
+  }
+
+  function oiSignal(r) {
+    if (r.rollover) return { label: "Rollover", cls: "neutral" };
+    if (r.priceChg == null || r.oiChg == null) return null;
+    if (r.priceChg === 0 || r.oiChg === 0) return { label: "No clear signal", cls: "neutral" };
+    if (r.priceChg > 0 && r.oiChg > 0) return { label: "Long buildup", cls: "good" };
+    if (r.priceChg < 0 && r.oiChg > 0) return { label: "Short buildup", cls: "bad" };
+    if (r.priceChg > 0 && r.oiChg < 0) return { label: "Short covering", cls: "warn" };
+    return { label: "Long unwinding", cls: "warn" };
+  }
+
+  function posTag(r) {
+    if (!isFinite(r.ann)) return '<span class="tag neutral">Invalid days</span>';
+    if (r.basis < 0) return '<span class="tag bad">▼ Discount</span>';
+    if (!r.pos) return '<span class="tag neutral">Building band</span>';
+    if (r.pos === "above") return '<span class="tag warn">▲ Above band</span>';
+    if (r.pos === "below") return '<span class="tag bad">▼ Below band</span>';
+    return '<span class="tag good">● Normal</span>';
+  }
+
+  function symbols() {
+    var s = {}; state.entries.forEach(function (e) { s[e.sym] = 1; }); return Object.keys(s).sort();
+  }
+
+  // ---------- form ----------
+  var f = { sym: $("fSym"), date: $("fDate"), exp: $("fExp"), spot: $("fSpot"), fut: $("fFut"), oi: $("fOI") };
+  f.date.value = todayISO();
+
+  function prefillExpiry() {
+    var sym = f.sym.value.trim().toUpperCase();
+    var last = state.entries.filter(function (e) { return e.sym === sym; })
+      .sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0];
+    if (last && !f.exp.value) f.exp.value = last.exp;
+  }
+  f.sym.addEventListener("change", function () { f.exp.value = ""; prefillExpiry(); updatePreview(); });
+
+  function updatePreview() {
+    var spot = parseFloat(f.spot.value), fut = parseFloat(f.fut.value);
+    var el = $("preview");
+    if (!(spot > 0 && fut > 0 && f.date.value && f.exp.value)) { el.innerHTML = ""; return; }
+    var c = calc(spot, fut, f.date.value, f.exp.value);
+    if (c.days <= 0) { el.innerHTML = '<span class="tag bad">Expiry must be after the date</span>'; return; }
+    var html = "Basis <b>₹" + fmt(c.basis, 2) + "</b> (" + pct(c.bp, 2) + ") · " + c.days + " days · Annualised <b>" + pct(c.ann, 1) + "</b>";
+    if (c.days < MIN_DAYS) html += ' &nbsp;<span class="tag warn">Under ' + MIN_DAYS + ' days — consider next month</span>';
+    el.innerHTML = html;
+  }
+  ["input", "change"].forEach(function (ev) {
+    [f.spot, f.fut, f.date, f.exp].forEach(function (x) { x.addEventListener(ev, updatePreview); });
+  });
+
+  $("entryForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var sym = f.sym.value.trim().toUpperCase();
+    var spot = parseFloat(f.spot.value), fut = parseFloat(f.fut.value);
+    var oi = f.oi.value === "" ? null : parseInt(f.oi.value, 10);
+    if (!sym || !(spot > 0) || !(fut > 0)) { toast("Enter symbol, spot and futures"); return; }
+    if (dayNum(f.exp.value) <= dayNum(f.date.value)) { toast("Expiry must be after the date"); return; }
+    var existing = state.entries.find(function (e) { return e.sym === sym && e.date === f.date.value; });
+    if (existing && !confirmReplace()) return;
+    if (existing) state.entries = state.entries.filter(function (e) { return e !== existing; });
+    state.entries.push({ id: uid(), sym: sym, date: f.date.value, exp: f.exp.value, spot: spot, fut: fut, oi: oi });
+    state.selected = sym;
+    save();
+    f.spot.value = ""; f.fut.value = ""; f.oi.value = "";
+    updatePreview();
+    render();
+    toast(existing ? "Entry replaced" : "Saved");
+  });
+  // Avoid browser modal dialogs on iOS standalone; replace silently but tell the user
+  function confirmReplace() { return true; }
+
+  // ---------- render ----------
+  function render() {
+    var syms = symbols();
+    $("symList").innerHTML = syms.map(function (s) { return '<option value="' + esc(s) + '">'; }).join("");
+    if (!state.selected || syms.indexOf(state.selected) < 0) state.selected = syms[0] || null;
+    $("symbar").innerHTML = syms.map(function (s) {
+      return '<button class="chip' + (s === state.selected ? " on" : "") + '" data-sym="' + esc(s) + '">' + esc(s) + "</button>";
+    }).join("");
+    var rows = state.selected ? rowsFor(state.selected) : [];
+    renderSummary(rows);
+    renderChart(rows);
+    renderLog(rows);
+  }
+
+  $("symbar").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-sym]"); if (!b) return;
+    state.selected = b.getAttribute("data-sym"); save(); render();
+    f.sym.value = state.selected; f.exp.value = ""; prefillExpiry(); updatePreview();
+  });
+
+  function renderSummary(rows) {
+    var el = $("summary");
+    if (!rows.length) { el.innerHTML = '<div class="empty">No entries yet. Add your first entry above — e.g. BHEL, spot 422.95, Dec futures 428.00, expiry 29 Dec.</div>'; return; }
+    var r = rows[rows.length - 1];
+    var bandTxt = r.band ? pct(r.band.lo) + " – " + pct(r.band.hi) : "Needs " + (BAND_MIN - Math.min(BAND_MIN, rows.length - 1)) + " more entries";
+    var sig = r.signal;
+    var html = '<div class="stats">' +
+      stat("Annualised basis", pct(r.ann), posTag(r)) +
+      stat("Normal band", r.band ? pct(r.band.mean) : "–", esc(bandTxt)) +
+      stat("Basis", "₹" + fmt(r.basis, 2), pct(r.bp, 2) + " · " + r.days + " days left") +
+      stat("Price + OI", sig ? '<span style="font-size:18px">' + esc(sig.label) + "</span>" : "–",
+        r.oiChg != null ? "OI " + (r.oiChg > 0 ? "+" : "") + fmt(r.oiChg, 0) + " · Fut " + (r.priceChg > 0 ? "+" : "") + fmt(r.priceChg, 2) : "Needs OI on 2 days, same expiry") +
+      "</div>";
+    html += '<div class="reading">' + reading(r) + "</div>";
+    el.innerHTML = html;
+  }
+  function stat(k, v, s) { return '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + "</div></div>"; }
+
+  function reading(r) {
+    var p = [];
+    var d = shortDate(r.e.date) + ", " + esc(r.e.sym) + ": ";
+    if (r.days < MIN_DAYS) p.push('<span class="tag warn">⚠ ' + r.days + " days left</span> Short expiry makes the annualised figure noisy — switch to the next month contract.");
+    if (r.basis < 0) p.push("<b>Futures below spot.</b> Either heavy short positioning or an ex-dividend date before expiry — check corporate actions first.");
+    else if (!r.pos) p.push("Still collecting data. The normal band appears after " + BAND_MIN + " entries; until then, compare against the ~7–10% typical carry range loosely.");
+    else if (r.pos === "above") p.push("<b>Premium is stretched above normal.</b> Futures buyers are paying extra — leveraged longs are crowding in. Bullish, but crowded trades unwind sharply.");
+    else if (r.pos === "below") p.push("<b>Premium is weaker than normal.</b> Futures selling pressure — shorts are active. Watch for a short squeeze if price turns up.");
+    else p.push("<b>Basis is within its normal band.</b> No unusual positioning — futures are priced at ordinary carry.");
+
+    var s = r.signal && r.signal.label;
+    if (s === "Long buildup" && r.pos === "above") p.push("<b>Strong confirmation:</b> fresh longs entering <i>and</i> paying up. Bullish but crowded.");
+    else if (s === "Short buildup" && (r.pos === "below" || r.basis < 0)) p.push("<b>Strong confirmation:</b> fresh shorts entering <i>and</i> pushing the basis down. Bearish.");
+    else if (s === "Long buildup") p.push("New longs are entering (price ↑, OI ↑).");
+    else if (s === "Short buildup") p.push("New shorts are entering (price ↓, OI ↑).");
+    else if (s === "Short covering") p.push("Rally driven by shorts exiting (price ↑, OI ↓) — less durable than fresh buying.");
+    else if (s === "Long unwinding") p.push("Fall driven by longs exiting (price ↓, OI ↓) — less aggressive than fresh shorting.");
+    else if (s === "Rollover") p.push("New expiry today, so the OI change isn't comparable.");
+    return "<p>" + d + p.join("</p><p>") + "</p>";
+  }
+
+  function renderLog(rows) {
+    var t = $("log");
+    if (!rows.length) { t.innerHTML = '<tr><td class="empty" colspan="10">No entries</td></tr>'; return; }
+    var h = "<thead><tr><th>Date</th><th>Expiry</th><th>Spot</th><th>Futures</th><th>Days</th><th>Basis</th><th>Ann.</th><th>Band</th><th>OI</th><th>Signal</th><th></th></tr></thead><tbody>";
+    rows.slice().reverse().forEach(function (r) {
+      var e = r.e;
+      h += "<tr><td>" + shortDate(e.date) + "</td><td>" + shortDate(e.exp) + "</td><td>" + fmt(e.spot, 2) + "</td><td>" + fmt(e.fut, 2) +
+        "</td><td>" + r.days + "</td><td>" + fmt(r.basis, 2) + "</td><td><b>" + pct(r.ann) + "</b></td><td class='l'>" + posTag(r) +
+        "</td><td>" + (e.oi == null ? "–" : fmt(e.oi, 0)) + "</td><td class='l'>" + (r.signal ? '<span class="tag ' + r.signal.cls + '">' + esc(r.signal.label) + "</span>" : "–") +
+        '</td><td><button class="small" data-del="' + e.id + '" aria-label="Delete entry">✕</button></td></tr>';
+    });
+    t.innerHTML = h + "</tbody>";
+  }
+  $("log").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-del]"); if (!b) return;
+    var id = b.getAttribute("data-del");
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Delete?"; setTimeout(function () { if (b.isConnected) { b.dataset.armed = ""; b.textContent = "✕"; } }, 3000); return; }
+    state.entries = state.entries.filter(function (e) { return e.id !== id; });
+    save(); render(); toast("Entry deleted");
+  });
+
+  // ---------- chart ----------
+  var chartRows = [];
+  function renderChart(rows) {
+    chartRows = rows.filter(function (r) { return isFinite(r.ann); });
+    $("chartTitle").textContent = "Annualised basis" + (state.selected ? " — " + state.selected : "");
+    var host = $("chart");
+    if (chartRows.length < 2) { host.innerHTML = '<div class="empty">The chart appears after 2 entries.</div>'; $("legend").innerHTML = ""; return; }
+    var W = 900, H = 320, m = { t: 16, r: 16, b: 30, l: 48 };
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var last = chartRows[chartRows.length - 1];
+    var band = last.band;
+    var vals = chartRows.map(function (r) { return r.ann * 100; });
+    var lo = Math.min.apply(null, vals.concat(band ? [band.lo * 100] : []).concat([0]));
+    var hi = Math.max.apply(null, vals.concat(band ? [band.hi * 100] : []));
+    var pad = (hi - lo) * 0.1 || 1; lo = lo < 0 ? lo - pad : 0; hi = hi + pad;
+    var step = niceStep((hi - lo) / 5);
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    var n = chartRows.length;
+    function x(i) { return m.l + (n === 1 ? iw / 2 : i * iw / (n - 1)); }
+    function y(v) { return m.t + ih - (v - lo) / (hi - lo) * ih; }
+    var s = '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Annualised basis over time">';
+    // grid + y axis
+    s += '<g class="axis">';
+    for (var v = lo; v <= hi + 1e-9; v += step) {
+      var yy = y(v);
+      s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--grid)" stroke-width="1"' + (Math.abs(v) < 1e-9 ? ' stroke="var(--text-3)"' : "") + "/>";
+      s += '<text x="' + (m.l - 8) + '" y="' + (yy + 4) + '" text-anchor="end">' + round(v) + "%</text>";
+    }
+    // x labels: first, middle, last
+    var idx = n > 2 ? [0, Math.floor((n - 1) / 2), n - 1] : [0, n - 1];
+    idx.forEach(function (i, k) {
+      var anchor = k === 0 ? "start" : (i === n - 1 ? "end" : "middle");
+      s += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="' + anchor + '">' + shortDate(chartRows[i].e.date) + "</text>";
+    });
+    s += "</g>";
+    // zero line emphasis
+    if (lo < 0 && hi > 0) s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="var(--text-3)" stroke-width="1"/>';
+    // band
+    if (band) {
+      s += '<rect x="' + m.l + '" y="' + y(band.hi * 100) + '" width="' + iw + '" height="' + (y(band.lo * 100) - y(band.hi * 100)) + '" fill="var(--band)"/>';
+      s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(band.mean * 100) + '" y2="' + y(band.mean * 100) + '" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>';
+    }
+    // line
+    var d = chartRows.map(function (r, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(r.ann * 100).toFixed(1); }).join(" ");
+    s += '<path d="' + d + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    // last point marker + direct label
+    s += '<circle cx="' + x(n - 1) + '" cy="' + y(last.ann * 100) + '" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>';
+    // hover layer
+    s += '<line id="xh" x1="0" x2="0" y1="' + m.t + '" y2="' + (m.t + ih) + '" stroke="var(--text-3)" stroke-width="1" visibility="hidden"/>';
+    s += '<circle id="xhDot" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>';
+    s += '<rect id="hit" x="' + m.l + '" y="' + m.t + '" width="' + iw + '" height="' + ih + '" fill="transparent"/>';
+    s += "</svg>";
+    host.innerHTML = s;
+    $("legend").innerHTML = "<span>Annualised basis</span>" + (band ? '<span class="band">Normal band (avg ± 1.5 SD, last ' + band.n + ")</span>" : '<span class="muted">Band appears after ' + BAND_MIN + " entries</span>");
+
+    var svg = host.querySelector("svg"), xh = svg.querySelector("#xh"), dot = svg.querySelector("#xhDot"), tip = $("tip");
+    function move(clientX) {
+      var rect = svg.getBoundingClientRect();
+      var px = (clientX - rect.left) / rect.width * W;
+      var i = Math.round((px - m.l) / (iw / (n - 1)));
+      i = Math.max(0, Math.min(n - 1, i));
+      var r = chartRows[i], cx = x(i), cy = y(r.ann * 100);
+      xh.setAttribute("x1", cx); xh.setAttribute("x2", cx); xh.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", cx); dot.setAttribute("cy", cy); dot.setAttribute("visibility", "visible");
+      tip.innerHTML = "<div class='muted'>" + shortDate(r.e.date) + " · exp " + shortDate(r.e.exp) + "</div><b>" + pct(r.ann) + "</b> annualised<br>Basis ₹" + fmt(r.basis, 2) + " · " + r.days + "d" + (r.signal ? "<br>" + esc(r.signal.label) : "");
+      tip.style.display = "block";
+      var sx = cx / W * rect.width, sy = cy / H * rect.height;
+      var tw = tip.offsetWidth;
+      var left = sx + 12; if (left + tw > rect.width) left = sx - tw - 12;
+      tip.style.left = left + "px"; tip.style.top = Math.max(0, sy - 30) + "px";
+    }
+    function hide() { xh.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); tip.style.display = "none"; }
+    var hit = svg.querySelector("#hit");
+    hit.addEventListener("pointermove", function (e) { move(e.clientX); });
+    hit.addEventListener("pointerdown", function (e) { move(e.clientX); });
+    hit.addEventListener("pointerleave", hide);
+  }
+  function niceStep(raw) { var p = Math.pow(10, Math.floor(Math.log10(raw))); var r = raw / p; return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * p; }
+  function round(v) { return Math.abs(v) < 1e-9 ? "0" : (Math.round(v * 10) / 10).toString(); }
+
+  // ---------- CSV ----------
+  $("exportBtn").addEventListener("click", function () {
+    var lines = ["symbol,date,expiry,spot,futures,oi"];
+    state.entries.slice().sort(function (a, b) { return (a.sym + a.date) < (b.sym + b.date) ? -1 : 1; }).forEach(function (e) {
+      lines.push([e.sym, e.date, e.exp, e.spot, e.fut, e.oi == null ? "" : e.oi].join(","));
+    });
+    var blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "basis-tracker-" + todayISO() + ".csv";
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  });
+  $("importBtn").addEventListener("click", function () { $("importFile").click(); });
+  $("importFile").addEventListener("change", function () {
+    var file = this.files[0]; if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var lines = String(reader.result).split(/\r?\n/).filter(function (l) { return l.trim(); });
+      var added = 0, skipped = 0;
+      lines.forEach(function (l, i) {
+        var c = l.split(",").map(function (x) { return x.trim(); });
+        if (i === 0 && /symbol/i.test(c[0])) return;
+        var e = { id: uid(), sym: (c[0] || "").toUpperCase(), date: c[1], exp: c[2], spot: parseFloat(c[3]), fut: parseFloat(c[4]), oi: c[5] ? parseInt(c[5], 10) : null };
+        if (!e.sym || !/^\d{4}-\d{2}-\d{2}$/.test(e.date) || !/^\d{4}-\d{2}-\d{2}$/.test(e.exp) || !(e.spot > 0) || !(e.fut > 0)) { skipped++; return; }
+        state.entries = state.entries.filter(function (x) { return !(x.sym === e.sym && x.date === e.date); });
+        state.entries.push(e); added++;
+      });
+      save(); render();
+      toast("Imported " + added + (skipped ? " · skipped " + skipped : ""));
+    };
+    reader.readAsText(file);
+    this.value = "";
+  });
+
+  // ---------- init ----------
+  if (state.selected) { f.sym.value = state.selected; prefillExpiry(); }
+  render();
+  updatePreview();
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+})();
+</script>
+</body>
+</html>
